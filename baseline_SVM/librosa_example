@@ -1,0 +1,88 @@
+#!/usr/bin/env python
+# coding: utf-8
+
+import os
+import librosa
+import matplotlib.pyplot as plt
+import numpy as np
+from sklearn.svm import SVC
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
+
+print("실제 현재 실행 경로:", os.getcwd())
+
+# 훈련 데이터 metadata 경로 지정
+train_metadata_path = '../2501ml_data/label/train_label.txt'
+train_data_path = '../2501ml_data/train'
+
+train_x = []
+train_y = []
+
+with open(train_metadata_path, 'r') as f:
+    for line in f:
+        spk, file_name, _, _, label = line.strip().split(' ')
+        wav_path = os.path.join(train_data_path, file_name)
+        y, sr = librosa.load(wav_path, sr=16000)
+        mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=20)
+        mfcc_delta = librosa.feature.delta(mfcc)
+        mfcc_delta2 = librosa.feature.delta(mfcc, order=2)
+        mfcc_combined = np.concatenate((mfcc, mfcc_delta, mfcc_delta2), axis=0)
+        mfcc_mean = np.mean(mfcc_combined, axis=1)
+        train_x.append(mfcc_mean)
+        train_y.append(label)
+
+print("훈련 데이터의 개수:", len(train_x))
+print("훈련 데이터 X의 shape:", train_x[0].shape)
+
+# 테스트 데이터 metadata 경로 지정
+test_metadata_path = '../2501ml_data/label/test_label.txt'
+test_data_path = '../2501ml_data/test'
+
+test_file_names = []
+test_x = []
+test_y = []
+
+with open(test_metadata_path, 'r') as f:
+    for line in f:
+        spk, file_name, _, _, label = line.strip().split(' ')
+        wav_path = os.path.join(test_data_path, file_name)
+        y, sr = librosa.load(wav_path, sr=16000)
+        mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=20)
+        mfcc_delta = librosa.feature.delta(mfcc)
+        mfcc_delta2 = librosa.feature.delta(mfcc, order=2)
+        mfcc_combined = np.concatenate((mfcc, mfcc_delta, mfcc_delta2), axis=0)
+        mfcc_mean = np.mean(mfcc_combined, axis=1)
+        test_x.append(mfcc_mean)
+        test_y.append(label)
+        test_file_names.append(file_name)
+
+print("테스트 데이터의 개수:", len(test_x))
+print("테스트 데이터 X의 shape:", test_x[0].shape)
+
+# SVM 훈련
+train_x = np.array(train_x)
+train_y = np.array(train_y)
+svm_model = SVC()
+svm_model.fit(train_x, train_y)
+
+# 예측
+test_x = np.array(test_x)
+test_y = np.array(test_y)
+predictions = svm_model.predict(test_x)
+print("예측 결과:", predictions)
+
+# 혼동행렬
+cm = confusion_matrix(test_y, predictions)
+print("Confusion Matrix:")
+disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=svm_model.classes_)
+disp.plot(cmap=plt.cm.Blues)
+plt.savefig("confusion_matrix.png")
+print("혼동 행렬이 confusion_matrix.png로 저장되었습니다.")
+
+# 결과 파일 저장
+with open('./team_test_result.txt', 'w') as f:
+    for i in range(len(predictions)):
+        f.write(f"{test_file_names[i]} {predictions[i]}\n")
+
+# 평가 스크립트 실행
+print("평가 스크립트를 실행합니다...")
+os.system('perl ../eval.pl ./team_test_result.txt ../2501ml_data/label/test_label.txt')
